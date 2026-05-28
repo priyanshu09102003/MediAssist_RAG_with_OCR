@@ -14,10 +14,9 @@ import config
 class AYUSHResult:
     condition: str
     ayurvedic: list[dict] = field(default_factory=list)
-    # [{"remedy": "Tulsi tea", "how_to": "Boil 5-6 tulsi leaves...",
-    #   "benefit": "Antiviral, reduces fever", "system": "Ayurveda"}]
+   
     yoga: list[dict] = field(default_factory=list)
-    # [{"name": "Anulom Vilom", "duration": "5-10 min", "benefit": "..."}]
+   
     diet_do: list[str] = field(default_factory=list)      # what to eat
     diet_avoid: list[str] = field(default_factory=list)   # what to avoid
     lifestyle: list[str] = field(default_factory=list)

@@ -1,3 +1,21 @@
+"""
+core/llm_chain.py
+-----------------
+The brain of MediAssist AI.
+
+Builds a full RAG chain:
+    User Query
+        → Retrieve relevant medical KB chunks (ChromaDB)
+        → Build rich prompt (patient profile + vitals + history + KB context)
+        → Send to Gemini 1.5 Pro
+        → Return structured MedicalResponse
+
+Also handles:
+    - Triage severity classification
+    - Differential diagnosis extraction
+    - Prescription JSON extraction
+    - Language-aware responses (EN/HI)
+"""
 
 import json
 import re
@@ -11,10 +29,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from core.vector_store import VectorStore
 from core.memory import SessionMemory, PatientContextBuilder
 import config
-from core.database import db
 
 
-# ── Response dataclass 
+# ── Response dataclass ────────────────────────────────────────────────────────
 
 @dataclass
 class MedicalResponse:
@@ -30,9 +47,9 @@ class MedicalResponse:
     emergency_alert: bool = False
 
 
-# ── System Prompt 
+# ── System Prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are MediAssist, an expert AI clinical assistant trained on WHO, MedlinePlus, and global medical guidelines. You assist patients in understanding their symptoms, possible diagnoses, and treatment options.
+SYSTEM_PROMPT = """You are MediAssist AI, an expert clinical assistant trained on WHO, MedlinePlus, and global medical guidelines. You assist patients in understanding their symptoms, possible diagnoses, and treatment options.
 
 ROLE & BEHAVIOR:
 - Act like an experienced, empathetic general physician taking a detailed history
@@ -99,9 +116,22 @@ CONVERSATION HISTORY:
 """
 
 
-# ── MedicalChain 
+# ── MedicalChain ──────────────────────────────────────────────────────────────
 
 class MedicalChain:
+    """
+    Main RAG chain for medical consultation.
+
+    Usage:
+        chain = MedicalChain()
+        response = chain.run(
+            query="I have fever and headache since 2 days",
+            memory=session_memory,
+            patient_context=context_builder.build(),
+        )
+        print(response.answer)
+        print(response.severity)
+    """
 
     def __init__(self):
         self.llm = ChatGoogleGenerativeAI(
@@ -112,7 +142,7 @@ class MedicalChain:
         )
         self.vector_store = VectorStore()
 
-    # ── Main entry point 
+    # ── Main entry point ──────────────────────────────────────────────────────
 
     def run(
         self,
@@ -120,11 +150,23 @@ class MedicalChain:
         memory: SessionMemory,
         patient_context: str = "",
         language: str = "en",
-        image_description: str = "",   
+        image_description: str = "",    # pre-analyzed image text from vision module
     ) -> MedicalResponse:
+        """
+        Run the full RAG pipeline for one user turn.
 
+        Args:
+            query             : user's text query
+            memory            : active SessionMemory object
+            patient_context   : built by PatientContextBuilder.build()
+            language          : 'en' or 'hi'
+            image_description : text output from vision analysis (if any)
 
-        # 1. Combining the query with image description if present
+        Returns:
+            MedicalResponse with answer, severity, differential, prescription
+        """
+
+        # 1. Combine query with image description if present
         full_query = query
         if image_description:
             full_query = (
@@ -132,13 +174,24 @@ class MedicalChain:
                 f"[Image Analysis Result]: {image_description}"
             )
 
-        # 2. Retrieving relevant medical KB chunks
+        # 2. Retrieve relevant medical KB chunks
         rag_context, sources = self._retrieve_context(full_query)
 
-        # 3. Add language instruction if Hindi
-        lang_instruction = ""
+        # 3. Explicit language instruction — always set, overrides conversation history
         if language == "hi":
-            lang_instruction = "\n\nIMPORTANT: The patient prefers Hindi. Respond entirely in Hindi."
+            lang_instruction = (
+                "\n\n🔴 LANGUAGE OVERRIDE — MANDATORY: "
+                "The patient's CURRENT message is in Hindi. "
+                "You MUST respond ENTIRELY in Hindi only. "
+                "Do NOT use English even if previous messages were in English."
+            )
+        else:
+            lang_instruction = (
+                "\n\n🔴 LANGUAGE OVERRIDE — MANDATORY: "
+                "The patient's CURRENT message is in English. "
+                "You MUST respond ENTIRELY in English only. "
+                "Do NOT use Hindi even if previous messages were in Hindi."
+            )
 
         # 4. Build system prompt
         system_content = SYSTEM_PROMPT.format(
@@ -186,7 +239,7 @@ class MedicalChain:
             emergency_alert=(severity == "emergency"),
         )
 
-    # ── Vision-aware query 
+    # ── Vision-aware query ─────────────────────────────────────────────────────
 
     def run_with_image(
         self,
@@ -197,15 +250,26 @@ class MedicalChain:
         patient_context: str = "",
         language: str = "en",
     ) -> MedicalResponse:
-        
+        """
+        Send image directly to Gemini Vision alongside the text query.
+        Used when the patient uploads a photo of their condition.
+        """
         import base64
 
-       
+        # Retrieve RAG context based on text query
         rag_context, sources = self._retrieve_context(query)
 
         lang_instruction = ""
         if language == "hi":
-            lang_instruction = "\n\nIMPORTANT: Respond entirely in Hindi."
+            lang_instruction = (
+                "\n\n🔴 LANGUAGE OVERRIDE — MANDATORY: "
+                "Respond ENTIRELY in Hindi only."
+            )
+        else:
+            lang_instruction = (
+                "\n\n🔴 LANGUAGE OVERRIDE — MANDATORY: "
+                "Respond ENTIRELY in English only."
+            )
 
         system_content = SYSTEM_PROMPT.format(
             patient_context=patient_context or "Patient profile not yet created.",
@@ -265,10 +329,13 @@ class MedicalChain:
             emergency_alert=(severity == "emergency"),
         )
 
-    # ── Triage-only quick call 
+    # ── Triage-only quick call ────────────────────────────────────────────────
 
     def classify_triage(self, symptoms: str) -> str:
-
+        """
+        Quick triage classification without full RAG.
+        Returns: 'mild' | 'moderate' | 'severe' | 'emergency'
+        """
         prompt = f"""
 You are a triage nurse. Based on the symptoms below, classify severity.
 Reply with ONLY one word: MILD, MODERATE, SEVERE, or EMERGENCY.
@@ -286,10 +353,10 @@ Classification:"""
             pass
         return "mild"
 
-    # ── RAG Retrieval 
+    # ── RAG Retrieval ─────────────────────────────────────────────────────────
 
     def _retrieve_context(self, query: str) -> tuple[str, list[str]]:
-       
+        """Search ChromaDB and return formatted context + source names."""
         try:
             docs_with_scores = self.vector_store.search_with_scores(
                 query, k=config.RETRIEVER_TOP_K
@@ -314,7 +381,7 @@ Classification:"""
         except Exception as e:
             return f"Knowledge base unavailable: {e}", []
 
-    # ── Parsers 
+    # ── Parsers ───────────────────────────────────────────────────────────────
 
     def _extract_severity(self, text: str) -> str:
         match = re.search(r"\[TRIAGE:\s*(MILD|MODERATE|SEVERE|EMERGENCY)\]",
@@ -358,7 +425,7 @@ Classification:"""
         return match.group(1).strip() if match else None
 
     def _clean_answer(self, text: str) -> str:
-        
+        """Remove structured JSON blocks and triage/refer tags from display text."""
         text = re.sub(r"```differential.*?```", "", text, flags=re.DOTALL)
         text = re.sub(r"```prescription.*?```", "", text, flags=re.DOTALL)
         text = re.sub(r"\[TRIAGE:\s*\w+\]", "", text)
@@ -367,11 +434,12 @@ Classification:"""
         return text.strip()
 
 
-
+# ── Module-level singleton ────────────────────────────────────────────────────
+# from core.llm_chain import medical_chain
 medical_chain = MedicalChain()
 
 
-# ── CLI Test 
+
 if __name__ == "__main__":
     print("Testing MedicalChain...")
 
@@ -395,7 +463,7 @@ if __name__ == "__main__":
         language="en",
     )
 
-    print(f"\n Response received ({len(response.answer)} chars)")
+    print(f"\n✅ Response received ({len(response.answer)} chars)")
     print(f"   Severity     : {response.severity}")
     print(f"   Differential : {len(response.differential)} conditions")
     print(f"   Prescription : {'Yes' if response.prescription else 'No'}")
