@@ -10,7 +10,7 @@ import fitz
 from PIL import Image
 import pytesseract
 
-from google import genai
+import google.genai as genai
 from google.genai import types
 
 import config
@@ -58,7 +58,7 @@ ALLOWED_MIME_TYPES = {
 }
 
 MAX_IMAGE_SIZE_MB  = 10
-MAX_DIMENSION_PX   = 1600  
+MAX_DIMENSION_PX   = 1600   # resize if larger
 
 
 def validate_and_preprocess(
@@ -114,7 +114,7 @@ def pdf_to_images(pdf_bytes: bytes) -> list[bytes]:
     return images
 
 
-# ── Patient Image Analysis 
+# ── Patient Image Analysis
 
 VISION_PROMPT = """You are a clinical AI assistant analyzing a patient-submitted medical image.
 The patient has described their concern as: "{user_query}"
@@ -151,7 +151,17 @@ def analyze_patient_image(
     mime_type: str,
     user_query: str = "Please analyze my condition",
 ) -> ImageAnalysisResult:
-    
+    """
+    Send patient image to Gemini Vision for clinical analysis.
+
+    Args:
+        image_bytes : raw image bytes
+        mime_type   : e.g. 'image/jpeg'
+        user_query  : patient's description of the problem
+
+    Returns:
+        ImageAnalysisResult with structured fields
+    """
     try:
         # Preprocess
         processed_bytes, mime_type = validate_and_preprocess(image_bytes, mime_type)
@@ -179,7 +189,7 @@ def analyze_patient_image(
 
 
 def _parse_vision_response(raw: str) -> ImageAnalysisResult:
-    
+    """Parse structured fields from Gemini Vision response."""
 
     def extract(label: str) -> str:
         match = re.search(rf"{label}:\s*(.+?)(?=\n[A-Z_]+:|$)", raw,
@@ -224,7 +234,7 @@ def _parse_vision_response(raw: str) -> ImageAnalysisResult:
 
 
 def image_result_to_text(result: ImageAnalysisResult) -> str:
-    
+    """Convert ImageAnalysisResult to a text summary for RAG context injection."""
     parts = [f"Visual Assessment of Patient Image:"]
     if result.description:
         parts.append(f"Observation: {result.description}")
@@ -376,7 +386,7 @@ def _gemini_analyze_lab(
         )
 
 
-# ── Testing 
+# ── Quick test 
 if __name__ == "__main__":
     print("Vision module loaded successfully.")
     print("Functions available:")

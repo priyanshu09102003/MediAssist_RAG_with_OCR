@@ -38,6 +38,18 @@ data/healthcare.db
 data/ingest_tracker.db  
 data/*.db
 
+data/test_*.mp3
+data/test_*.wav
+data/test_*.pdf
+data/test_*.jpg
+data/test_*.png
+
+*.mp3
+*.wav
+*.ogg
+*.webm
+*.m4a
+
 
 data/prescriptions/
 data/uploads/

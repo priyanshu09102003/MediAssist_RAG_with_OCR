@@ -1,4 +1,3 @@
-
 import io
 import os
 import tempfile
@@ -14,9 +13,9 @@ import config
 @dataclass
 class TranscriptionResult:
     text: str
-    language: str          
+    language: str          # detected or specified language code ('en' | 'hi' etc.)
     confidence: float = 0.0
-    method: str = ""       
+    method: str = ""       # 'google_cloud' | 'whisper' | 'failed'
     error: Optional[str] = None
 
 
@@ -51,8 +50,9 @@ WHISPER_LANG_CODES = {
 
 
 # ── Audio format helpers 
+
 def convert_to_wav(audio_bytes: bytes, source_format: str = "webm") -> bytes:
-    
+   
     try:
         from pydub import AudioSegment
 
@@ -72,7 +72,7 @@ def convert_to_wav(audio_bytes: bytes, source_format: str = "webm") -> bytes:
 
 
 def get_audio_format(audio_bytes: bytes) -> str:
-    """Detect audio format from magic bytes."""
+    
     if audio_bytes[:4] == b"RIFF":
         return "wav"
     if audio_bytes[:3] == b"ID3" or audio_bytes[:2] == b"\xff\xfb":
@@ -83,20 +83,18 @@ def get_audio_format(audio_bytes: bytes) -> str:
 
 
 # ── Speech-to-Text 
-
 def transcribe_audio(
     audio_bytes: bytes,
     language: str = "en",
     auto_detect: bool = True,
 ) -> TranscriptionResult:
-    
     if not audio_bytes or len(audio_bytes) < 100:
         return TranscriptionResult(
             text="", language=language, method="failed",
             error="No audio data received"
         )
 
-    # Try Google Cloud first (better quality, supports Hindi)
+    
     if _gcp_credentials_available():
         result = _transcribe_google_cloud(audio_bytes, language, auto_detect)
         if result.text:
@@ -108,7 +106,7 @@ def transcribe_audio(
 
 
 def _gcp_credentials_available() -> bool:
-    
+    """Check if GCP credentials are configured."""
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     return bool(creds_path and Path(creds_path).exists())
 
@@ -118,7 +116,7 @@ def _transcribe_google_cloud(
     language: str,
     auto_detect: bool,
 ) -> TranscriptionResult:
-    
+    """Transcribe using Google Cloud Speech-to-Text API."""
     try:
         from google.cloud import speech
 
@@ -189,7 +187,7 @@ def _transcribe_whisper(
     audio_bytes: bytes,
     language: str,
 ) -> TranscriptionResult:
-    
+    """Transcribe using local OpenAI Whisper (offline fallback)."""
     try:
         import whisper
 
@@ -244,7 +242,17 @@ def text_to_speech(
     language: str = "en",
     slow: bool = False,
 ) -> Optional[bytes]:
-    
+    """
+    Convert text to speech audio bytes using gTTS.
+
+    Args:
+        text     : text to speak
+        language : 'en' | 'hi' | etc.
+        slow     : speak slowly (useful for medical instructions)
+
+    Returns:
+        MP3 audio bytes, or None if failed
+    """
     try:
         from gtts import gTTS
 
@@ -265,8 +273,14 @@ def text_to_speech(
 
 
 # ── Language Detection 
+
 def detect_language(text: str) -> str:
-    
+    """
+    Simple language detector based on Unicode ranges.
+    Returns 'hi' if mostly Devanagari, else 'en'.
+
+    For production, can be replaced with langdetect library.
+    """
     if not text:
         return "en"
 
