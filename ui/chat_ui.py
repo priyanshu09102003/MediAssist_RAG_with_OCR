@@ -464,7 +464,7 @@ def render_consult_page():
             with col_inp:
                 placeholder = (
                     "अपने लक्षण बताएं..." if st.session_state.language == "hi"
-                    else "Describe your symptoms, ask a question..."
+                    else "Describe how you are feeling... e.g. I have had a fever and headache for 2 days "
                 )
                 user_input = st.text_area(
                     "Message",

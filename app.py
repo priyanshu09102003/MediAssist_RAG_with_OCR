@@ -1,8 +1,3 @@
-"""
-app.py — MediAssist AI · Main Streamlit Application
-Run: streamlit run app.py
-"""
-
 import streamlit as st
 
 st.set_page_config(
@@ -39,15 +34,8 @@ def logo_svg(size=56):
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
-def inject_css(dark=False):
-    if dark:
-        vars_css = """
-        --primary:#2ecc71; --primary-dk:#1a6b4a; --accent:#2ecc71;
-        --bg:#0d1a12; --bg2:#111e16; --card:#162119;
-        --border:#1e3d28; --text:#e2f0e8; --muted:#6b9e7a;
-        --sidebar:#091410; --input:#1a2e1e; --exp:#132b1e;"""
-    else:
-        vars_css = """
+def inject_css():
+    vars_css = """
         --primary:#1a6b4a; --primary-dk:#0f3d28; --accent:#2ecc71;
         --bg:#f4f9f6; --bg2:#edf7f2; --card:#ffffff;
         --border:#c8e6d4; --text:#1a2e22; --muted:#5a7a65;
@@ -74,6 +62,17 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(-
 [data-baseweb="popover"] [data-baseweb="menu"]{{background:#1a5c36!important;border:1px solid #2e7d52!important;border-radius:8px!important;}}
 [data-baseweb="popover"] [data-baseweb="menu"] li{{color:#e8f5ec!important;}}
 [data-baseweb="popover"] [data-baseweb="menu"] li:hover{{background:rgba(46,204,113,0.2)!important;}}
+
+/* ── SIDEBAR TOGGLE BUTTON ── */
+[data-testid="stSidebarCollapsedControl"]{{display:none!important;}}
+[data-testid="stSidebarCollapseButton"]{{display:none!important;}}
+.st-toggle-btn > button{{
+    position:fixed!important;top:12px!important;left:12px!important;
+    z-index:99999!important;width:38px!important;height:38px!important;
+    border-radius:10px!important;padding:0!important;
+    background:linear-gradient(135deg,#1a6b4a,#2e7d52)!important;
+    font-size:1.1rem!important;line-height:1!important;
+    box-shadow:0 2px 12px rgba(26,107,74,.4)!important;}}
 
 /* ── CHAT BUBBLES ── */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]){{
@@ -158,10 +157,35 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(-
 ::-webkit-scrollbar-thumb{{background:var(--border);border-radius:99px;}}
 ::-webkit-scrollbar-thumb:hover{{background:var(--primary);}}
 
-#MainMenu,footer,header{{visibility:hidden!important;}}
-[data-testid="stToolbar"]{{display:none!important;}}
-</style>""", unsafe_allow_html=True)
 
+#MainMenu,footer,header{{visibility:hidden!important;}}
+
+[data-testid="stToolbar"]{{display:none!important;}}
+
+/* ── FIX: File uploader dropzone (Streamlit defaults dark) ── */
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploaderDropzone"] *,
+[data-testid="stFileDropzoneInstructions"],
+[data-testid="stFileDropzoneInstructions"] *{{
+    background:var(--bg2)!important;
+    color:var(--text)!important;
+    border-color:var(--border)!important;}}
+
+/* ── FIX: Radio labels ── */
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] p{{color:var(--text)!important;}}
+
+/* ── FIX: Tab labels ── */
+.stTabs [data-baseweb="tab"] p{{color:inherit!important;}}
+
+/* ── Keep buttons white text ── */
+.stButton>button,.stButton>button *{{color:#fff!important;}}
+
+/* ── Placeholder text visibility ── */
+.stTextArea>div>div>textarea::placeholder{{color:#8aab96!important;opacity:1!important;}}
+.stTextInput>div>div>input::placeholder{{color:#8aab96!important;opacity:1!important;}}
+
+</style>""", unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
 def init_session_state():
@@ -169,7 +193,8 @@ def init_session_state():
         patient_id=None, patient_data=None, session_id=None, memory=None,
         current_page="consult", language="en", family_member_id=None,
         show_ayush=True, chat_messages=[], triage_result=None,
-        last_response=None, dark_mode=False, show_onboarding=False,
+        last_response=None, show_onboarding=False,
+        sidebar_open=True,  
     )
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -178,6 +203,14 @@ def init_session_state():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 def render_sidebar():
+    # ── Hamburger toggle ──
+    with st.container():
+        st.markdown("<div class='st-toggle-btn'>", unsafe_allow_html=True)
+        if st.button("☰", key="sidebar_toggle"):
+            st.session_state.sidebar_open = not st.session_state.sidebar_open
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
     with st.sidebar:
         st.markdown(f"""
         <div style="text-align:center;padding:1.25rem 0 .5rem">
@@ -487,7 +520,7 @@ def route_page():
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     init_session_state()
-    inject_css(dark=st.session_state.dark_mode)
+    inject_css()
 
     if st.session_state.patient_id and not st.session_state.patient_data:
         st.session_state.patient_data = db.get_patient(st.session_state.patient_id)
@@ -504,9 +537,19 @@ def main():
             render_onboarding()
         return
 
-    render_sidebar()
-    route_page()
+    # ── Sidebar with toggle ──
+    if st.session_state.sidebar_open:
+        render_sidebar()
+    else:
+        # Show only the toggle button when sidebar is closed
+        with st.container():
+            st.markdown("<div class='st-toggle-btn'>", unsafe_allow_html=True)
+            if st.button("☰", key="sidebar_toggle_closed"):
+                st.session_state.sidebar_open = True
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
+    route_page()
 
 if __name__ == "__main__":
     main()
