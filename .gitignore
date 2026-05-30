@@ -32,6 +32,16 @@ ENV/
 .env.bak
 
 
+data/.device_id
+
+
+core/__pycache__/
+modules/__pycache__/
+ui/__pycache__/
+utils/__pycache__/
+**/__pycache__/
+
+
 data/chroma_db/         
 data/medical_kb/        
 data/healthcare.db      

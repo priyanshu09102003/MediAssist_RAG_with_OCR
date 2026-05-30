@@ -9,6 +9,7 @@ st.set_page_config(
 
 import json
 from core.database import db
+from utils.security import get_device_id, hash_pin, verify_pin, validate_pin_format
 
 # ── SVG Logo ──────────────────────────────────────────────────────────────────
 def logo_svg(size=56):
@@ -52,7 +53,11 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(-
 .block-container{{padding:1.5rem 2rem!important;background:var(--bg)!important;}}
 
 /* ── SIDEBAR ── */
-[data-testid="stSidebar"]{{background:var(--sidebar)!important;border-right:1px solid rgba(46,204,113,0.1)!important;}}
+[data-testid="stSidebar"]{{
+    background:var(--sidebar)!important;
+    border-right:1px solid rgba(46,204,113,0.1)!important;
+    min-width:320px!important;}}
+
 [data-testid="stSidebar"] *{{color:#d4edd9!important;}}
 [data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3{{color:#fff!important;}}
 [data-testid="stSidebar"] .stSelectbox>div>div{{background:rgba(255,255,255,0.09)!important;border:1px solid rgba(255,255,255,0.18)!important;border-radius:8px!important;}}
@@ -63,16 +68,6 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(-
 [data-baseweb="popover"] [data-baseweb="menu"] li{{color:#e8f5ec!important;}}
 [data-baseweb="popover"] [data-baseweb="menu"] li:hover{{background:rgba(46,204,113,0.2)!important;}}
 
-/* ── SIDEBAR TOGGLE BUTTON ── */
-[data-testid="stSidebarCollapsedControl"]{{display:none!important;}}
-[data-testid="stSidebarCollapseButton"]{{display:none!important;}}
-.st-toggle-btn > button{{
-    position:fixed!important;top:12px!important;left:12px!important;
-    z-index:99999!important;width:38px!important;height:38px!important;
-    border-radius:10px!important;padding:0!important;
-    background:linear-gradient(135deg,#1a6b4a,#2e7d52)!important;
-    font-size:1.1rem!important;line-height:1!important;
-    box-shadow:0 2px 12px rgba(26,107,74,.4)!important;}}
 
 /* ── CHAT BUBBLES ── */
 [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]){{
@@ -194,7 +189,7 @@ def init_session_state():
         current_page="consult", language="en", family_member_id=None,
         show_ayush=True, chat_messages=[], triage_result=None,
         last_response=None, show_onboarding=False,
-        sidebar_open=True,  
+        pin_verified=False, pin_attempts=0,
     )
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -203,14 +198,6 @@ def init_session_state():
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 def render_sidebar():
-    # ── Hamburger toggle ──
-    with st.container():
-        st.markdown("<div class='st-toggle-btn'>", unsafe_allow_html=True)
-        if st.button("☰", key="sidebar_toggle"):
-            st.session_state.sidebar_open = not st.session_state.sidebar_open
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
     with st.sidebar:
         st.markdown(f"""
         <div style="text-align:center;padding:1.25rem 0 .5rem">
@@ -279,6 +266,8 @@ def render_sidebar():
         if st.button("🔄 Switch Profile", use_container_width=True, key="sw_prof"):
             for k in ["patient_id","patient_data","session_id","memory","chat_messages"]:
                 st.session_state[k] = None if k!="chat_messages" else []
+            st.session_state.pin_verified = False   
+            st.session_state.pin_attempts = 0      
             st.rerun()
 
         st.markdown("""<div style="font-size:.68rem;color:#3a6a4a;text-align:center;
@@ -296,6 +285,10 @@ def get_img_base64(path):
         return base64.b64encode(f.read()).decode()
 
 def render_landing(all_patients):
+    all_patients = db.get_all_patients(device_id=get_device_id())
+    if not all_patients:
+        render_onboarding()
+        return
     st.markdown("""<style>
     .main,[data-testid="stAppViewContainer"]{
         background:linear-gradient(160deg,#0f3d28 0%,#1a6b4a 45%,#0d2e1e 100%)!important;
@@ -348,6 +341,8 @@ def render_landing(all_patients):
                 pid = options[selected]
                 st.session_state.patient_id   = pid
                 st.session_state.patient_data = db.get_patient(pid)
+                st.session_state.pin_verified = False 
+                st.session_state.pin_attempts = 0 
                 st.rerun()
         with c2:
             if st.button("New Profile", use_container_width=True, key="land_new"):
@@ -438,6 +433,70 @@ def render_landing(all_patients):
             "</div>"
         )
         st.markdown(cards_html, unsafe_allow_html=True)
+
+# ── PIN verification screen 
+def render_pin_screen(patient: dict):
+    _, mid, _ = st.columns([1, 1.4, 1])
+    with mid:
+        st.markdown(f"""
+        <div style="text-align:center;margin-bottom:1.75rem">
+          <div style="width:56px;height:56px;margin:0 auto .75rem">{logo_svg(56)}</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;
+                      color:var(--primary);font-weight:400">Welcome back</div>
+          <div style="color:var(--muted);font-size:.9rem;margin-top:.3rem">
+              Enter your PIN to access
+              <b>{patient.get('name','')}'s</b> profile</div>
+        </div>""", unsafe_allow_html=True)
+
+        if st.session_state.pin_attempts >= 5:
+            st.error("🔒 Too many incorrect attempts. Please restart the app.")
+            if st.button("← Back to profile selection"):
+                st.session_state.patient_id   = None
+                st.session_state.pin_attempts = 0
+                st.rerun()
+            return
+
+        with st.form("pin_form", clear_on_submit=True):
+            pin = st.text_input(
+                "4-digit PIN", type="password",
+                placeholder="● ● ● ●", max_chars=4,
+                label_visibility="collapsed",
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                submit = st.form_submit_button("Unlock →", use_container_width=True)
+            with col2:
+                back   = st.form_submit_button("← Back",   use_container_width=True)
+
+        if back:
+            st.session_state.patient_id   = None
+            st.session_state.patient_data = None
+            st.session_state.pin_attempts = 0
+            st.rerun()
+
+        if submit:
+            pin_hash = patient.get("pin_hash", "")
+            if not pin_hash:
+                # Old profile created before PIN feature — let in, no PIN set
+                st.session_state.pin_verified = True
+                st.session_state.pin_attempts = 0
+                st.rerun()
+            elif verify_pin(pin, pin_hash):
+                st.session_state.pin_verified = True
+                st.session_state.pin_attempts = 0
+                st.rerun()
+            else:
+                st.session_state.pin_attempts += 1
+                remaining = 5 - st.session_state.pin_attempts
+                st.error(f"❌ Incorrect PIN. {remaining} attempt(s) remaining.")
+
+        if st.session_state.pin_attempts > 0:
+            st.markdown(
+                f"<div style='text-align:center;color:var(--muted);"
+                f"font-size:.8rem;margin-top:.5rem'>"
+                f"Failed attempts: {st.session_state.pin_attempts}/5</div>",
+                unsafe_allow_html=True,
+            )
 # ── Onboarding ────────────────────────────────────────────────────────────────
 def render_onboarding():
     _, mid, _ = st.columns([1, 2, 1])
@@ -477,12 +536,30 @@ def render_onboarding():
                            placeholder="diabetes, hypertension (comma separated)")
 
             lang = st.selectbox("Preferred Language", ["English","Hindi"])
+
+            st.markdown("#### 🔒 Set Your PIN")
+            st.caption("A 4-digit PIN to protect your profile on this device")
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                pin1 = st.text_input("Create PIN *", type="password",
+                                     max_chars=4, placeholder="e.g. 1234")
+            with pc2:
+                pin2 = st.text_input("Confirm PIN *", type="password",
+                                     max_chars=4, placeholder="repeat PIN")
+
             sub  = st.form_submit_button("✅  Create Profile & Start →",
                                          use_container_width=True)
 
         if sub:
             if not name.strip():
                 st.error("Please enter your name.")
+                return
+            valid, err = validate_pin_format(pin1)
+            if not valid:
+                st.error(f"PIN error: {err}")
+                return
+            if pin1 != pin2:
+                st.error("PINs do not match. Please re-enter.")
                 return
             lc  = "en" if lang=="English" else "hi"
             pid = db.create_patient(
@@ -491,11 +568,15 @@ def render_onboarding():
                 allergies=[a.strip() for a in allg.split(",") if a.strip()],
                 chronic_conditions=[c.strip() for c in cond.split(",") if c.strip()],
                 language=lc,
+                device_id=get_device_id(),
+                pin_hash=hash_pin(pin1),
             )
             st.session_state.patient_id      = pid
             st.session_state.patient_data    = db.get_patient(pid)
             st.session_state.language        = lc
             st.session_state.show_onboarding = False
+            st.session_state.pin_verified    = True
+            st.session_state.pin_attempts    = 0
             st.success(f"Welcome to MediAssist AI, {name.strip()}! 🎉")
             st.rerun()
 
@@ -537,17 +618,12 @@ def main():
             render_onboarding()
         return
 
-    # ── Sidebar with toggle ──
-    if st.session_state.sidebar_open:
-        render_sidebar()
-    else:
-        # Show only the toggle button when sidebar is closed
-        with st.container():
-            st.markdown("<div class='st-toggle-btn'>", unsafe_allow_html=True)
-            if st.button("☰", key="sidebar_toggle_closed"):
-                st.session_state.sidebar_open = True
-                st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+    # ── PIN gate ──
+    if not st.session_state.pin_verified:
+        render_pin_screen(st.session_state.patient_data)
+        return
+
+    render_sidebar()
 
     route_page()
 

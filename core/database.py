@@ -1,4 +1,8 @@
 """
+core/database.py
+----------------
+SQLite schema + DatabaseManager for all patient data.
+
 Tables:
     patients          — master profile per user
     family_members    — additional profiles under one account
@@ -19,7 +23,7 @@ from typing import Optional
 import config
 
 
-# ── Schema DDL 
+# ── Schema DDL ────────────────────────────────────────────────────────────────
 
 SCHEMA = """
 -- Master patient profile (one per account/device)
@@ -29,9 +33,11 @@ CREATE TABLE IF NOT EXISTS patients (
     age             INTEGER,
     gender          TEXT    CHECK(gender IN ('male','female','other')),
     blood_group     TEXT,
-    allergies       TEXT,           -- JSON list: ["penicillin","dust"]
-    chronic_conditions TEXT,        -- JSON list: ["diabetes","hypertension"]
+    allergies       TEXT,
+    chronic_conditions TEXT,
     language        TEXT    DEFAULT 'en',
+    device_id       TEXT    DEFAULT '',
+    pin_hash        TEXT    DEFAULT '',
     created_at      TEXT    DEFAULT (datetime('now')),
     updated_at      TEXT    DEFAULT (datetime('now'))
 );
@@ -125,19 +131,33 @@ CREATE INDEX IF NOT EXISTS idx_lab_reports_patient ON lab_reports(patient_id);
 """
 
 
-# ── DatabaseManager
+# ── DatabaseManager 
 
 class DatabaseManager:
-
+    
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = str(db_path or config.SQLITE_DB_PATH)
         self._init_db()
 
     def _init_db(self):
-        """Create all tables if they don't exist."""
+        """Create all tables if they don't exist, then run migrations."""
         with self.connection() as conn:
             conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self):
+        """Safely add new columns to existing databases (idempotent)."""
+        migrations = [
+            "ALTER TABLE patients ADD COLUMN device_id TEXT DEFAULT ''",
+            "ALTER TABLE patients ADD COLUMN pin_hash  TEXT DEFAULT ''",
+        ]
+        with self.connection() as conn:
+            for sql in migrations:
+                try:
+                    conn.execute(sql)
+                except Exception:
+                    pass  
 
     @contextmanager
     def connection(self):
@@ -155,20 +175,22 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    # ── Patients 
+    # ── Patients
 
     def create_patient(self, name: str, age: int, gender: str,
                        blood_group: str = "", allergies: list = None,
-                       chronic_conditions: list = None, language: str = "en") -> int:
+                       chronic_conditions: list = None, language: str = "en",
+                       device_id: str = "", pin_hash: str = "") -> int:
         with self.connection() as conn:
             cur = conn.execute(
                 """INSERT INTO patients
-                   (name, age, gender, blood_group, allergies, chronic_conditions, language)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (name, age, gender, blood_group, allergies,
+                    chronic_conditions, language, device_id, pin_hash)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (name, age, gender, blood_group,
                  json.dumps(allergies or []),
                  json.dumps(chronic_conditions or []),
-                 language)
+                 language, device_id, pin_hash)
             )
             return cur.lastrowid
 
@@ -179,9 +201,18 @@ class DatabaseManager:
             ).fetchone()
             return self._row_to_dict(row) if row else None
 
-    def get_all_patients(self) -> list:
+    def get_all_patients(self, device_id: str = "") -> list:
+        """Return patients belonging to this device only."""
         with self.connection() as conn:
-            rows = conn.execute("SELECT * FROM patients ORDER BY name").fetchall()
+            if device_id:
+                rows = conn.execute(
+                    "SELECT * FROM patients WHERE device_id = ? ORDER BY name",
+                    (device_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM patients ORDER BY name"
+                ).fetchall()
             return [self._row_to_dict(r) for r in rows]
 
     def update_patient(self, patient_id: int, **kwargs) -> None:
@@ -259,7 +290,7 @@ class DatabaseManager:
             ).fetchall()
             return [self._row_to_dict(r) for r in rows]
 
-    # ── Messages
+    # ── Messages 
 
     def add_message(self, session_id: int, role: str, content: str,
                     input_type: str = "text", image_path: str = None) -> int:
@@ -281,10 +312,7 @@ class DatabaseManager:
             return [self._row_to_dict(r) for r in rows]
 
     def get_session_history_text(self, patient_id: int, limit_sessions: int = 3) -> str:
-        """
-        Returns a formatted string of the last N sessions' messages.
-        Used to inject past history into the RAG context.
-        """
+        
         sessions = self.get_sessions(patient_id, limit=limit_sessions)
         if not sessions:
             return "No previous consultation history found."
@@ -426,12 +454,11 @@ class DatabaseManager:
         return dict(row)
 
 
-# ── Module-level singleton 
 
 db = DatabaseManager()
 
 
-# ── Quick test 
+# ── Quick test (run: python core/database.py)
 if __name__ == "__main__":
     print("Testing DatabaseManager...")
 
