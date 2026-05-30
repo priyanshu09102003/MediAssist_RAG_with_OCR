@@ -1,16 +1,10 @@
 """
-app.py
-------
-MediAssist AI — Main Streamlit Application
-
-Run with:
-    streamlit run app.py
+app.py — MediAssist AI · Main Streamlit Application
+Run: streamlit run app.py
 """
 
 import streamlit as st
-from pathlib import Path
 
-# ── Page config (must be first Streamlit call) ────────────────────────────────
 st.set_page_config(
     page_title="MediAssist AI",
     page_icon="🏥",
@@ -20,499 +14,492 @@ st.set_page_config(
 
 import json
 from core.database import db
-from core.memory import SessionMemory, PatientContextBuilder
 
-# ── Global CSS ────────────────────────────────────────────────────────────────
-def inject_css():
-    st.markdown("""
-<style>
+# ── SVG Logo ──────────────────────────────────────────────────────────────────
+def logo_svg(size=56):
+    return f"""<svg width="{size}" height="{size}" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2ecc71"/>
+      <stop offset="100%" style="stop-color:#1a6b4a"/>
+    </linearGradient>
+    <linearGradient id="lg2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2ecc71;stop-opacity:0"/>
+      <stop offset="50%" style="stop-color:#2ecc71"/>
+      <stop offset="100%" style="stop-color:#2ecc71;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+  <rect width="56" height="56" rx="14" fill="url(#lg1)"/>
+  <rect x="23" y="11" width="10" height="34" rx="5" fill="white" opacity="0.95"/>
+  <rect x="11" y="23" width="34" height="10" rx="5" fill="white" opacity="0.95"/>
+  <path d="M9 43 L15 43 L18 37 L22 47 L26 39 L29 45 L33 41 L37 41 L47 41"
+        stroke="url(#lg2)" stroke-width="2.2" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
+def inject_css(dark=False):
+    if dark:
+        vars_css = """
+        --primary:#2ecc71; --primary-dk:#1a6b4a; --accent:#2ecc71;
+        --bg:#0d1a12; --bg2:#111e16; --card:#162119;
+        --border:#1e3d28; --text:#e2f0e8; --muted:#6b9e7a;
+        --sidebar:#091410; --input:#1a2e1e; --exp:#132b1e;"""
+    else:
+        vars_css = """
+        --primary:#1a6b4a; --primary-dk:#0f3d28; --accent:#2ecc71;
+        --bg:#f4f9f6; --bg2:#edf7f2; --card:#ffffff;
+        --border:#c8e6d4; --text:#1a2e22; --muted:#5a7a65;
+        --sidebar:#0f3d28; --input:#ffffff; --exp:#edf7f2;"""
+
+    st.markdown(f"""<style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
+:root {{{vars_css}}}
 
-:root {
-    --primary:      #1a6b4a;
-    --primary-lt:   #2e7d52;
-    --accent:       #2ecc71;
-    --accent-lt:    #eaf6ef;
-    --danger:       #e74c3c;
-    --warning:      #f39c12;
-    --info:         #3498db;
-    --bg:           #f7faf8;
-    --card:         #ffffff;
-    --border:       #d1e8d8;
-    --text:         #1a2e22;
-    --text-muted:   #6b8f76;
-    --sidebar-bg:   #0f3d28;
-}
+html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(--text)!important;}}
 
-html, body, [class*="css"] {
-    font-family: 'DM Sans', sans-serif;
-    color: var(--text);
-}
+/* backgrounds */
+.main,[data-testid="stAppViewContainer"]{{background:var(--bg)!important;}}
+.block-container{{padding:1.5rem 2rem!important;background:var(--bg)!important;}}
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: var(--sidebar-bg) !important;
-    border-right: none;
-}
-[data-testid="stSidebar"] * { color: #e8f5ec !important; }
-[data-testid="stSidebar"] .stSelectbox label,
-[data-testid="stSidebar"] .stRadio label { color: #a8d5b8 !important; }
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 { color: #ffffff !important; }
+/* ── SIDEBAR ── */
+[data-testid="stSidebar"]{{background:var(--sidebar)!important;border-right:1px solid rgba(46,204,113,0.1)!important;}}
+[data-testid="stSidebar"] *{{color:#d4edd9!important;}}
+[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3{{color:#fff!important;}}
+[data-testid="stSidebar"] .stSelectbox>div>div{{background:rgba(255,255,255,0.09)!important;border:1px solid rgba(255,255,255,0.18)!important;border-radius:8px!important;}}
+[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] span,
+[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] div{{color:#fff!important;background:transparent!important;}}
+[data-testid="stSidebar"] .stSelectbox svg{{fill:#8ecfa8!important;}}
+[data-baseweb="popover"] [data-baseweb="menu"]{{background:#1a5c36!important;border:1px solid #2e7d52!important;border-radius:8px!important;}}
+[data-baseweb="popover"] [data-baseweb="menu"] li{{color:#e8f5ec!important;}}
+[data-baseweb="popover"] [data-baseweb="menu"] li:hover{{background:rgba(46,204,113,0.2)!important;}}
 
-/* Main background */
-.main { background: var(--bg); }
-.block-container { padding: 1.5rem 2rem; }
+/* ── CHAT BUBBLES ── */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]){{
+    background:linear-gradient(135deg,#1a6b4a,#2e7d52)!important;
+    border-radius:20px 20px 5px 20px!important;border:none!important;
+    margin-left:6%!important;margin-bottom:.75rem!important;
+    box-shadow:0 4px 16px rgba(26,107,74,.3)!important;}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) span,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) div{{color:#fff!important;}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]){{
+    background:var(--card)!important;
+    border-radius:20px 20px 20px 5px!important;
+    border:1px solid var(--border)!important;
+    margin-right:6%!important;margin-bottom:.75rem!important;
+    box-shadow:0 2px 12px rgba(0,0,0,.06)!important;}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) p,
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) li{{color:var(--text)!important;}}
 
-/* Cards */
-.med-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 1px 4px rgba(26,107,74,0.06);
-}
+/* ── BUTTONS ── */
+.stButton>button{{background:linear-gradient(135deg,#1a6b4a,#2e7d52)!important;
+    color:#fff!important;border:none!important;border-radius:10px!important;
+    font-weight:500!important;transition:all .2s!important;
+    box-shadow:0 2px 8px rgba(26,107,74,.25)!important;}}
+.stButton>button:hover{{background:linear-gradient(135deg,#1f7a56,#34915f)!important;
+    transform:translateY(-1px)!important;box-shadow:0 6px 16px rgba(26,107,74,.35)!important;}}
 
-/* Triage badges */
-.badge-mild      { background:#e8f8f0; color:#1a6b4a; border:1px solid #a8d5b8; }
-.badge-moderate  { background:#fef9e7; color:#7d6108; border:1px solid #f9e79f; }
-.badge-severe    { background:#fef0e8; color:#784212; border:1px solid #f5cba7; }
-.badge-emergency { background:#fde8e8; color:#922b21; border:1px solid #f1948a; }
-.triage-badge {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:6px 14px; border-radius:99px;
-    font-weight:600; font-size:0.88rem;
-    margin-bottom: 0.75rem;
-}
+/* ── INPUTS ── */
+.stTextInput>div>div>input,.stTextArea>div>div>textarea,.stNumberInput>div>div>input{{
+    background:var(--input)!important;color:var(--text)!important;
+    border:1.5px solid var(--border)!important;border-radius:10px!important;
+    font-family:'DM Sans',sans-serif!important;}}
+.stTextInput>div>div>input:focus,.stTextArea>div>div>textarea:focus{{
+    border-color:var(--accent)!important;box-shadow:0 0 0 3px rgba(46,204,113,.12)!important;}}
+[data-baseweb="select"]>div{{background:var(--input)!important;
+    border-color:var(--border)!important;border-radius:10px!important;color:var(--text)!important;}}
 
-/* Chat bubbles */
-.chat-user {
-    background: var(--primary);
-    color: white;
-    border-radius: 18px 18px 4px 18px;
-    padding: 0.75rem 1.1rem;
-    margin: 0.3rem 0;
-    max-width: 80%;
-    margin-left: auto;
-    word-wrap: break-word;
-}
-.chat-assistant {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 18px 18px 18px 4px;
-    padding: 0.75rem 1.1rem;
-    margin: 0.3rem 0;
-    max-width: 85%;
-    word-wrap: break-word;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
+/* ── TABS ── */
+.stTabs [data-baseweb="tab-list"]{{background:var(--bg2)!important;border-radius:10px!important;padding:4px!important;}}
+.stTabs [data-baseweb="tab"]{{border-radius:8px!important;font-weight:500!important;color:var(--muted)!important;}}
+.stTabs [aria-selected="true"]{{background:var(--card)!important;color:var(--primary)!important;box-shadow:0 2px 8px rgba(0,0,0,.08)!important;}}
 
-/* Buttons */
-.stButton > button {
-    background: var(--primary) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-}
-.stButton > button:hover {
-    background: var(--primary-lt) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(26,107,74,0.25) !important;
-}
+/* ── EXPANDERS ── */
+[data-testid="stExpander"]{{background:var(--exp)!important;border:1px solid var(--border)!important;border-radius:12px!important;margin-bottom:.5rem!important;}}
+[data-testid="stExpander"] summary{{color:var(--primary)!important;font-weight:600!important;}}
 
-/* Input fields */
-.stTextInput > div > div > input,
-.stTextArea > div > div > textarea,
-.stSelectbox > div > div {
-    border-color: var(--border) !important;
-    border-radius: 8px !important;
-    font-family: 'DM Sans', sans-serif !important;
-}
-.stTextInput > div > div > input:focus,
-.stTextArea > div > div > textarea:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(46,204,113,0.15) !important;
-}
+/* ── METRICS ── */
+[data-testid="stMetric"]{{background:var(--card)!important;border:1px solid var(--border)!important;border-radius:12px!important;padding:1rem 1.25rem!important;}}
+[data-testid="stMetricValue"]{{color:var(--primary)!important;font-weight:700!important;}}
 
-/* Expanders */
-.streamlit-expanderHeader {
-    background: var(--accent-lt) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    color: var(--primary) !important;
-}
+/* ── FORMS ── */
+[data-testid="stForm"]{{background:var(--card)!important;border:1px solid var(--border)!important;border-radius:14px!important;padding:1.5rem!important;}}
 
-/* Metric cards */
-[data-testid="stMetric"] {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.75rem 1rem;
-}
-                
-/* Sidebar selectbox — fix invisible text on light background */
-[data-testid="stSidebar"] .stSelectbox > div > div {
-    background: #1f5c38 !important;
-    color: #e8f5ec !important;
-    border-color: #2e7d52 !important;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div > div {
-    color: #e8f5ec !important;
-}
-[data-testid="stSidebar"] .stSelectbox svg {
-    fill: #a8d5b8 !important;
-}
-/* Dropdown options list */
-[data-testid="stSidebar"] [data-baseweb="select"] [role="listbox"],
-[data-testid="stSidebar"] [data-baseweb="popover"] {
-    background: #1a4a2e !important;
-    border-color: #2e7d52 !important;
-}
-[data-testid="stSidebar"] [data-baseweb="select"] [role="option"] {
-    background: #1a4a2e !important;
-    color: #e8f5ec !important;
-}
-[data-testid="stSidebar"] [data-baseweb="select"] [role="option"]:hover {
-    background: #2e7d52 !important;
-}
-                
-/* User bubble — keep primary green, slightly deeper */
-.chat-user {
-    background: #155a3e !important;
-}
-/* Assistant bubble — warm off-white with a faint green tint */
-.chat-assistant {
-    background: #f0f7f3 !important;
-    border-color: #c2deca !important;
-}
+/* ── TRIAGE BADGES ── */
+.badge-mild{{background:#e6f9ef;color:#1a6b4a;border:1.5px solid #a8d5b8;}}
+.badge-moderate{{background:#fef9e7;color:#7d6108;border:1.5px solid #f9e79f;}}
+.badge-severe{{background:#fef0e8;color:#784212;border:1.5px solid #f5cba7;}}
+.badge-emergency{{background:#fde8e8;color:#922b21;border:1.5px solid #f1948a;}}
+.triage-badge{{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;
+    border-radius:99px;font-weight:600;font-size:.85rem;margin-bottom:.6rem;}}
 
-/* Hide Streamlit branding */
-#MainMenu, footer, header { visibility: hidden; }
+/* ── EMERGENCY ── */
+.emergency-alert{{background:#fde8e8;border:2px solid #e74c3c;border-radius:12px;
+    padding:1rem 1.25rem;margin-bottom:1rem;animation:pulsering 2s infinite;}}
+@keyframes pulsering{{0%,100%{{box-shadow:0 0 0 0 rgba(231,76,60,.35);}}
+    50%{{box-shadow:0 0 0 10px rgba(231,76,60,0);}}}}
 
-/* Scrollable chat container */
-.chat-container {
-    height: 62vh;
-    overflow-y: auto;
-    padding: 1rem;
-    background: var(--bg);
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    margin-bottom: 1rem;
-}
+/* ── PAGE HEADERS ── */
+.page-header{{font-family:'DM Serif Display',serif;font-size:1.65rem;
+    color:var(--primary);margin-bottom:.2rem;font-weight:400;}}
+.page-subheader{{color:var(--muted);font-size:.88rem;margin-bottom:1.25rem;}}
 
-/* Emergency alert */
-.emergency-alert {
-    background: #fde8e8;
-    border: 2px solid #e74c3c;
-    border-radius: 10px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-    animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.3); }
-    50%       { box-shadow: 0 0 0 8px rgba(231,76,60,0); }
-}
+/* ── LANDING PAGE ── */
+.landing-bg{{
+    min-height:100vh;
+    background:linear-gradient(160deg,#0f3d28 0%,#1a6b4a 45%,#0d2e1e 100%);
+    display:flex;align-items:center;justify-content:center;
+    margin:-1.5rem -2rem;padding:2rem;}}
 
-/* Page header */
-.page-header {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.6rem;
-    color: var(--primary);
-    margin-bottom: 0.25rem;
-}
-.page-subheader {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 1.25rem;
-}
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{{width:5px;}}
+::-webkit-scrollbar-thumb{{background:var(--border);border-radius:99px;}}
+::-webkit-scrollbar-thumb:hover{{background:var(--primary);}}
 
-/* Nav button active state */
-.nav-active > button {
-    background: rgba(46,204,113,0.15) !important;
-    border-left: 3px solid var(--accent) !important;
-}
-</style>
-""", unsafe_allow_html=True)
+#MainMenu,footer,header{{visibility:hidden!important;}}
+[data-testid="stToolbar"]{{display:none!important;}}
+</style>""", unsafe_allow_html=True)
 
 
-# ── Session state initializer ─────────────────────────────────────────────────
+# ── Session state ─────────────────────────────────────────────────────────────
 def init_session_state():
-    defaults = {
-        "patient_id":        None,
-        "patient_data":      None,
-        "session_id":        None,
-        "memory":            None,
-        "current_page":      "consult",
-        "language":          "en",
-        "family_member_id":  None,
-        "show_ayush":        True,
-        "chat_messages":     [],   # list of {"role","content","meta"} for display
-        "triage_result":     None,
-        "last_response":     None,
-        "onboarding_done":   False,
-        "input_mode":        "text",  # text | voice | image
-    }
-    for key, val in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = val
+    defaults = dict(
+        patient_id=None, patient_data=None, session_id=None, memory=None,
+        current_page="consult", language="en", family_member_id=None,
+        show_ayush=True, chat_messages=[], triage_result=None,
+        last_response=None, dark_mode=False, show_onboarding=False,
+    )
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 def render_sidebar():
     with st.sidebar:
-        # Logo
-        st.markdown("""
-        <div style='text-align:center; padding: 1rem 0 0.5rem'>
-            <div style='font-size:2.5rem'>🏥</div>
-            <div style='font-family:"DM Serif Display",serif; font-size:1.3rem;
-                        color:white; font-weight:400'>MediAssist AI</div>
-            <div style='font-size:0.75rem; color:#7dc99a; margin-top:2px'>
-                Your Clinical AI Assistant</div>
+        st.markdown(f"""
+        <div style="text-align:center;padding:1.25rem 0 .5rem">
+          <div style="width:50px;height:50px;margin:0 auto 8px">{logo_svg(50)}</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:1.2rem;
+                      color:#fff;letter-spacing:-.01em">MediAssist AI</div>
+          <div style="font-size:.7rem;color:#6dab82;margin-top:2px;
+                      text-transform:uppercase;letter-spacing:.08em">
+              Clinical AI Assistant</div>
         </div>
-        <hr style='border-color:#1f5c38; margin:0.75rem 0'>
+        <div style="height:1px;background:linear-gradient(90deg,transparent,
+            rgba(46,204,113,.3),transparent);margin:.5rem 0 1rem"></div>
         """, unsafe_allow_html=True)
 
-        # Patient info chip
         if st.session_state.patient_data:
             p = st.session_state.patient_data
-            name = p.get("name", "Patient")
-            age  = p.get("age", "")
-            gender = p.get("gender", "")
             st.markdown(f"""
-            <div style='background:rgba(46,204,113,0.12); border:1px solid #2e7d52;
-                        border-radius:10px; padding:10px 14px; margin-bottom:1rem'>
-                <div style='font-weight:600; font-size:0.95rem'>{name}</div>
-                <div style='font-size:0.78rem; color:#7dc99a'>
-                    {age} yrs • {gender.title()} • {p.get("blood_group") or "Blood group N/A"}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div style="background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.2);
+                        border-radius:12px;padding:10px 12px;margin-bottom:1rem;
+                        display:flex;align-items:center;gap:10px">
+              <div style="font-size:1.4rem">👤</div>
+              <div>
+                <div style="font-weight:600;font-size:.9rem;color:#fff">
+                    {p.get('name','Patient')}</div>
+                <div style="font-size:.72rem;color:#7dc99a">
+                    {p.get('age','')} yrs · {(p.get('gender') or '').title()} · {p.get('blood_group') or '—'}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
 
-        # Navigation
-        st.markdown("<div style='font-size:0.7rem; color:#5a8a6a; "
-                    "text-transform:uppercase; letter-spacing:1px; "
-                    "margin-bottom:6px'>Navigation</div>", unsafe_allow_html=True)
-
-        pages = [
-            ("🩺", "Consult",       "consult"),
-            ("📋", "History",       "history"),
-            ("📊", "Vitals",        "vitals"),
-            ("💊", "Prescriptions", "prescriptions"),
-            ("👨‍👩‍👧", "Family",     "family"),
-            ("👤", "My Profile",    "profile"),
-        ]
-
-        for icon, label, key in pages:
-            is_active = st.session_state.current_page == key
-            btn_style = "nav-active" if is_active else ""
-            col = st.container()
-            with col:
-                if st.button(f"{icon}  {label}", key=f"nav_{key}",
-                             use_container_width=True):
-                    st.session_state.current_page = key
-                    st.rerun()
-
-        st.markdown("<hr style='border-color:#1f5c38; margin:1rem 0'>",
+        st.markdown("<div style='font-size:.65rem;color:#4a7a5a;text-transform:uppercase;"
+                    "letter-spacing:.1em;margin-bottom:6px'>Navigation</div>",
                     unsafe_allow_html=True)
 
-        # Settings
-        st.markdown("<div style='font-size:0.7rem; color:#5a8a6a; "
-                    "text-transform:uppercase; letter-spacing:1px; "
-                    "margin-bottom:6px'>Settings</div>", unsafe_allow_html=True)
+        for icon, label, key in [
+            ("🩺","Consult","consult"),("📋","History","history"),
+            ("📊","Vitals","vitals"),("💊","Prescriptions","prescriptions"),
+            ("👨‍👩‍👧","Family","family"),("👤","My Profile","profile"),
+        ]:
+            if st.button(f"{icon}  {label}", key=f"nav_{key}", use_container_width=True):
+                st.session_state.current_page = key
+                st.rerun()
 
-        lang = st.selectbox(
-            "Language",
-            options=["English", "Hindi"],
-            index=0 if st.session_state.language == "en" else 1,
-            key="lang_select",
-        )
-        st.session_state.language = "en" if lang == "English" else "hi"
+        st.markdown("<div style='height:1px;background:rgba(46,204,113,.15);"
+                    "margin:1rem 0'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:.65rem;color:#4a7a5a;text-transform:uppercase;"
+                    "letter-spacing:.1em;margin-bottom:8px'>Settings</div>",
+                    unsafe_allow_html=True)
 
-        st.session_state.show_ayush = st.toggle(
-            "Show AYUSH Remedies",
-            value=st.session_state.show_ayush,
-        )
+        lang = st.selectbox("Language", ["English","Hindi"],
+                            index=0 if st.session_state.language=="en" else 1,
+                            key="lang_sel")
+        st.session_state.language = "en" if lang=="English" else "hi"
+        st.session_state.show_ayush = st.toggle("🌿 AYUSH Remedies",
+                                                 value=st.session_state.show_ayush)
 
-        # Family member selector
         if st.session_state.patient_id:
             members = db.get_family_members(st.session_state.patient_id)
             if members:
-                st.markdown("<div style='margin-top:0.5rem'></div>",
-                            unsafe_allow_html=True)
-                options = ["Myself"] + [f"{m['name']} ({m['relation']})" for m in members]
-                selected = st.selectbox("Consulting for", options=options,
-                                        key="family_select")
-                if selected == "Myself":
-                    st.session_state.family_member_id = None
-                else:
-                    idx = options.index(selected) - 1
-                    st.session_state.family_member_id = members[idx]["id"]
+                opts = ["Myself"]+[f"{m['name']} ({m['relation']})" for m in members]
+                sel  = st.selectbox("Consulting for", opts, key="fam_sel")
+                st.session_state.family_member_id = (
+                    None if sel=="Myself" else members[opts.index(sel)-1]["id"])
 
-        st.markdown("<hr style='border-color:#1f5c38; margin:1rem 0'>",
-                    unsafe_allow_html=True)
+        st.markdown("<div style='height:1px;background:rgba(46,204,113,.15);"
+                    "margin:1rem 0'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Switch Profile", use_container_width=True, key="sw_prof"):
+            for k in ["patient_id","patient_data","session_id","memory","chat_messages"]:
+                st.session_state[k] = None if k!="chat_messages" else []
+            st.rerun()
+
+        st.markdown("""<div style="font-size:.68rem;color:#3a6a4a;text-align:center;
+            line-height:1.7;padding:.5rem .25rem 0">
+            ⚕️ AI-assisted · Not a licensed doctor<br>
+            Consult a professional for serious conditions</div>""",
+            unsafe_allow_html=True)
+
+
+# ── Landing page (returning user) ─────────────────────────────────────────────
+import base64, os
+
+def get_img_base64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+def render_landing(all_patients):
+    st.markdown("""<style>
+    .main,[data-testid="stAppViewContainer"]{
+        background:linear-gradient(160deg,#0f3d28 0%,#1a6b4a 45%,#0d2e1e 100%)!important;
+        min-height:100vh;}
+    .block-container{background:transparent!important;padding-top:3rem!important;}
+    [data-baseweb="select"]>div{
+        background:rgba(255,255,255,.1)!important;
+        border:1.5px solid rgba(255,255,255,.22)!important;border-radius:10px!important;}
+    [data-baseweb="select"] span,[data-baseweb="select"] div{color:#fff!important;}
+    </style>""", unsafe_allow_html=True)
+
+    # Load doctor image as base64
+    doc_b64 = get_img_base64("assets/doctor-ai.png")  
+
+    left_col, right_col = st.columns([1.4, 1], gap="medium")
+
+    with left_col:
+        st.markdown(f"""
+        <div style="text-align:center;margin-bottom:1.8rem">
+          <div style="width:80px;height:80px;margin:0 auto 1rem">{logo_svg(80)}</div>
+          <h1 style="font-family:'DM Serif Display',serif;font-size:2.4rem;
+                     color:#ffffff;margin:0;font-weight:400;letter-spacing:-.02em">
+              MediAssist AI</h1>
+          <p style="color:rgba(255,255,255,.55);font-size:.92rem;margin:.4rem 0 0">
+              Your Personal Clinical AI Assistant</p>
+        </div>""", unsafe_allow_html=True)
+
+        # ── Glass card — dropdown now INSIDE ──
         st.markdown("""
-        <div style='font-size:0.7rem; color:#4a7a5a; text-align:center;
-                    line-height:1.6; padding:0 0.5rem'>
-            ⚕️ AI-assisted. Not a licensed doctor.<br>
-            Always consult a professional for serious conditions.
+        <div style="background:rgba(255,255,255,.06);backdrop-filter:blur(20px);
+                    -webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);
+                    border-radius:24px;padding:1.2rem 2rem 0.25rem;
+                    box-shadow:0 24px 64px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1);
+                    margin-bottom:1rem">
+          <p style="color:rgba(255,255,255,.65);font-size:1.25rem;
+                    text-transform:uppercase;letter-spacing:.1em;margin:0 0 .6rem">
+              Select Profile</p>""", unsafe_allow_html=True)
+
+        options = {p["name"]: p["id"] for p in all_patients}
+        selected = st.selectbox("profile_sel", list(options.keys()),
+                                label_visibility="collapsed", key="land_sel")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Buttons ──
+        st.markdown("<div style='height:.5rem'></div>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Continue →", use_container_width=True, key="land_cont"):
+                pid = options[selected]
+                st.session_state.patient_id   = pid
+                st.session_state.patient_data = db.get_patient(pid)
+                st.rerun()
+        with c2:
+            if st.button("New Profile", use_container_width=True, key="land_new"):
+                st.session_state.show_onboarding = True
+                st.rerun()
+
+        # ── Pills + footer ──
+        st.markdown("""
+        <div style="height:1px;background:rgba(255,255,255,.08);margin:1.25rem 0 1rem"></div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px">
+            <span style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.25);
+                  border-radius:99px;padding:4px 11px;font-size:.75rem;color:rgba(255,255,255,.75)">
+                  🩺 RAG Diagnosis</span>
+            <span style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.25);
+                  border-radius:99px;padding:4px 11px;font-size:.75rem;color:rgba(255,255,255,.75)">
+                  📷 Vision AI</span>
+            <span style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.25);
+                  border-radius:99px;padding:4px 11px;font-size:.75rem;color:rgba(255,255,255,.75)">
+                  🎤 Hindi & English</span>
+            <span style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.25);
+                  border-radius:99px;padding:4px 11px;font-size:.75rem;color:rgba(255,255,255,.75)">
+                  🌿 AYUSH</span>
+            <span style="background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.25);
+                  border-radius:99px;padding:4px 11px;font-size:.75rem;color:rgba(255,255,255,.75)">
+                  💊 Prescription PDF</span>
         </div>
+        <p style="text-align:center;color:rgba(255,255,255,.75);font-size:.7rem;margin-top:1.25rem">
+            ⚕️ AI-assisted · Not a substitute for professional medical advice</p>
         """, unsafe_allow_html=True)
 
+# ── Right column — doctor image + stat cards below ──
+    with right_col:
+        cards_html = (
+            "<div style='display:flex;flex-direction:column;align-items:center;"
+            "justify-content:flex-start;height:100%;gap:0;margin-top:-2rem'>"
 
+            "<img src='data:image/png;base64," + doc_b64 + "'"
+            " style='width:100%;max-width:360px;height:auto;display:block;'"
+            " alt='AI Doctor'/>"
+
+            "<div style='display:grid;grid-template-columns:1fr 1fr 1fr;"
+            "gap:10px;width:100%;max-width:360px;margin-top:12px'>"
+
+            "<div style='background:rgba(255,255,255,.07);"
+            "border:1px solid rgba(46,204,113,.2);"
+            "border-radius:14px;padding:12px 10px;text-align:center'>"
+            "<div style='font-size:1.3rem;font-weight:700;color:#2ecc71;"
+            "font-family:DM Sans,sans-serif;line-height:1'>200+</div>"
+            "<div style='font-size:.65rem;color:rgba(255,255,255,.5);"
+            "margin-top:4px;font-family:DM Sans,sans-serif;"
+            "text-transform:uppercase;letter-spacing:.06em'>AYUSH Remedies</div>"
+            "</div>"
+
+            "<div style='background:rgba(255,255,255,.07);"
+            "border:1px solid rgba(46,204,113,.2);"
+            "border-radius:14px;padding:12px 10px;text-align:center'>"
+            "<div style='font-size:1.3rem;font-weight:700;color:#2ecc71;"
+            "font-family:DM Sans,sans-serif;line-height:1'>500+</div>"
+            "<div style='font-size:.65rem;color:rgba(255,255,255,.5);"
+            "margin-top:4px;font-family:DM Sans,sans-serif;"
+            "text-transform:uppercase;letter-spacing:.06em'>Trained Conditions</div>"
+            "</div>"
+
+            "<div style='background:rgba(255,255,255,.07);"
+            "border:1px solid rgba(46,204,113,.2);"
+            "border-radius:14px;padding:12px 10px;text-align:center'>"
+            "<div style='font-size:1.3rem;font-weight:700;color:#2ecc71;"
+            "font-family:DM Sans,sans-serif;line-height:1'>1200+</div>"
+            "<div style='font-size:.65rem;color:rgba(255,255,255,.5);"
+            "margin-top:4px;font-family:DM Sans,sans-serif;"
+            "text-transform:uppercase;letter-spacing:.06em'>Knowledge Base Articles</div>"
+            "</div>"
+
+            "</div>"
+
+            "<div style='width:100%;max-width:360px;margin-top:10px;"
+            "background:rgba(46,204,113,.08);"
+            "border:1px solid rgba(46,204,113,.18);"
+            "border-radius:12px;padding:10px 14px;"
+            "display:flex;align-items:center;gap:10px'>"
+            "<div style='width:8px;height:8px;border-radius:50%;"
+            "background:#2ecc71;flex-shrink:0'></div>"
+            "<div style='font-family:DM Sans,sans-serif;font-size:.75rem;"
+            "color:rgba(255,255,255,.65);line-height:1.4'>"
+            "Powered by RAG &middot; Vision AI &middot; Multilingual NLP"
+            "</div></div>"
+
+            "</div>"
+        )
+        st.markdown(cards_html, unsafe_allow_html=True)
 # ── Onboarding ────────────────────────────────────────────────────────────────
 def render_onboarding():
-    st.markdown("""
-    <div style='max-width:580px; margin:3rem auto 0'>
-        <div style='text-align:center; margin-bottom:2rem'>
-            <div style='font-size:3rem'>🏥</div>
-            <div style='font-family:"DM Serif Display",serif; font-size:2rem;
-                        color:#1a6b4a'>Welcome to MediAssist AI</div>
-            <div style='color:#6b8f76; margin-top:0.5rem'>
-                Your personal AI clinical assistant.<br>
-                Let's set up your health profile to get started.
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 2, 1])
+    with mid:
+        if st.session_state.show_onboarding:
+            if st.button("← Back", key="back_onb"):
+                st.session_state.show_onboarding = False
+                st.rerun()
 
-    with st.form("onboarding_form"):
-        st.markdown("#### 👤 Basic Information")
-        col1, col2 = st.columns(2)
-        with col1:
-            name = st.text_input("Full Name *", placeholder="e.g. Priya Sharma")
-            age  = st.number_input("Age *", min_value=1, max_value=120, value=25)
-        with col2:
-            gender = st.selectbox("Gender *", ["male", "female", "other"])
-            blood_group = st.selectbox(
-                "Blood Group",
-                ["", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
+        st.markdown(f"""
+        <div style="text-align:center;margin:1rem 0 2rem">
+          <div style="width:56px;height:56px;margin:0 auto .75rem">{logo_svg(56)}</div>
+          <div style="font-family:'DM Serif Display',serif;font-size:1.9rem;
+                      color:var(--primary);font-weight:400">Create Your Profile</div>
+          <div style="color:var(--muted);font-size:.87rem;margin-top:.3rem">
+              Your health data stays private on your device</div>
+        </div>""", unsafe_allow_html=True)
+
+        with st.form("onboard_form"):
+            st.markdown("#### 👤 Basic Information")
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("Full Name *", placeholder="e.g. Priya Sharma")
+                age  = st.number_input("Age *", 1, 120, 25)
+            with c2:
+                gender = st.selectbox("Gender *", ["male","female","other"])
+                bg     = st.selectbox("Blood Group",
+                             ["","A+","A-","B+","B-","O+","O-","AB+","AB-"])
+
+            st.markdown("#### ⚠️ Medical History")
+            c3, c4 = st.columns(2)
+            with c3:
+                allg = st.text_input("Known Allergies",
+                           placeholder="penicillin, aspirin (comma separated)")
+            with c4:
+                cond = st.text_input("Chronic Conditions",
+                           placeholder="diabetes, hypertension (comma separated)")
+
+            lang = st.selectbox("Preferred Language", ["English","Hindi"])
+            sub  = st.form_submit_button("✅  Create Profile & Start →",
+                                         use_container_width=True)
+
+        if sub:
+            if not name.strip():
+                st.error("Please enter your name.")
+                return
+            lc  = "en" if lang=="English" else "hi"
+            pid = db.create_patient(
+                name=name.strip(), age=int(age), gender=gender,
+                blood_group=bg,
+                allergies=[a.strip() for a in allg.split(",") if a.strip()],
+                chronic_conditions=[c.strip() for c in cond.split(",") if c.strip()],
+                language=lc,
             )
-
-        st.markdown("#### ⚠️ Medical History")
-        allergies_raw = st.text_input(
-            "Known Allergies",
-            placeholder="e.g. penicillin, aspirin, dust (comma separated)",
-        )
-        conditions_raw = st.text_input(
-            "Chronic Conditions",
-            placeholder="e.g. diabetes, hypertension (comma separated)",
-        )
-
-        language = st.selectbox("Preferred Language", ["English", "Hindi"])
-
-        submitted = st.form_submit_button(
-            "✅ Create My Profile & Start",
-            use_container_width=True,
-        )
-
-    if submitted:
-        if not name.strip():
-            st.error("Please enter your name.")
-            return
-
-        allergies   = [a.strip() for a in allergies_raw.split(",") if a.strip()]
-        conditions  = [c.strip() for c in conditions_raw.split(",") if c.strip()]
-        lang_code   = "en" if language == "English" else "hi"
-
-        pid = db.create_patient(
-            name=name.strip(),
-            age=int(age),
-            gender=gender,
-            blood_group=blood_group,
-            allergies=allergies,
-            chronic_conditions=conditions,
-            language=lang_code,
-        )
-
-        st.session_state.patient_id    = pid
-        st.session_state.patient_data  = db.get_patient(pid)
-        st.session_state.language      = lang_code
-        st.session_state.onboarding_done = True
-        st.session_state["show_onboarding"] = False
-        st.success(f"Profile created! Welcome, {name} 👋")
-        st.rerun()
+            st.session_state.patient_id      = pid
+            st.session_state.patient_data    = db.get_patient(pid)
+            st.session_state.language        = lc
+            st.session_state.show_onboarding = False
+            st.success(f"Welcome to MediAssist AI, {name.strip()}! 🎉")
+            st.rerun()
 
 
 # ── Page router ───────────────────────────────────────────────────────────────
 def route_page():
-    page = st.session_state.current_page
-
-    if page == "consult":
-        from ui.chat_ui import render_consult_page
-        render_consult_page()
-    elif page == "history":
-        from ui.history_ui import render_history_page
-        render_history_page()
-    elif page == "vitals":
-        from ui.vitals_ui import render_vitals_page
-        render_vitals_page()
-    elif page == "prescriptions":
-        from ui.prescriptions_ui import render_prescriptions_page
-        render_prescriptions_page()
-    elif page == "family":
-        from ui.family_ui import render_family_page
-        render_family_page()
-    elif page == "profile":
-        from ui.profile_ui import render_profile_page
-        render_profile_page()
+    p = st.session_state.current_page
+    if p == "consult":
+        from ui.chat_ui import render_consult_page; render_consult_page()
+    elif p == "history":
+        from ui.history_ui import render_history_page; render_history_page()
+    elif p == "vitals":
+        from ui.vitals_ui import render_vitals_page; render_vitals_page()
+    elif p == "prescriptions":
+        from ui.prescriptions_ui import render_prescriptions_page; render_prescriptions_page()
+    elif p == "family":
+        from ui.family_ui import render_family_page; render_family_page()
+    elif p == "profile":
+        from ui.profile_ui import render_profile_page; render_profile_page()
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    inject_css()
     init_session_state()
+    inject_css(dark=st.session_state.dark_mode)
 
-    # Load patient from DB if session state lost on rerun
     if st.session_state.patient_id and not st.session_state.patient_data:
         st.session_state.patient_data = db.get_patient(st.session_state.patient_id)
 
-    # If "New Profile" was clicked, show onboarding form directly
-    if st.session_state.get("show_onboarding"):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("← Back to profile selection"):
-                st.session_state["show_onboarding"] = False
-                st.rerun()
+    if st.session_state.show_onboarding:
         render_onboarding()
         return
 
-    # Show onboarding if no patient profile yet
     if not st.session_state.patient_id:
-        all_patients = db.get_all_patients()
-        if all_patients:
-            # Returning user — pick profile
-            st.markdown("""
-            <div style='text-align:center; margin-top:3rem'>
-                <div style='font-size:3rem'>🏥</div>
-                <div style='font-family:"DM Serif Display",serif;
-                            font-size:1.8rem; color:#1a6b4a'>
-                    Welcome back to MediAssist AI</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                options = {p["name"]: p["id"] for p in all_patients}
-                selected_name = st.selectbox(
-                    "Select your profile", list(options.keys())
-                )
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.button("Continue →", use_container_width=True):
-                        pid = options[selected_name]
-                        st.session_state.patient_id   = pid
-                        st.session_state.patient_data = db.get_patient(pid)
-                        st.rerun()
-                with col_b:
-                    if st.button("New Profile", use_container_width=True):
-                        st.session_state["show_onboarding"] = True
-                        st.rerun()
+        patients = db.get_all_patients()
+        if patients:
+            render_landing(patients)
         else:
             render_onboarding()
         return
