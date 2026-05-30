@@ -46,7 +46,7 @@ def inject_css():
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
 :root {{{vars_css}}}
 
-html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(--text)!important;}}
+html,body{{font-family:'DM Sans',sans-serif!important;color:var(--text)!important;}}
 
 /* backgrounds */
 .main,[data-testid="stAppViewContainer"]{{background:var(--bg)!important;}}
@@ -102,8 +102,9 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif!important;color:var(-
     font-family:'DM Sans',sans-serif!important;}}
 .stTextInput>div>div>input:focus,.stTextArea>div>div>textarea:focus{{
     border-color:var(--accent)!important;box-shadow:0 0 0 3px rgba(46,204,113,.12)!important;}}
-[data-baseweb="select"]>div{{background:var(--input)!important;
+[data-baseweb="select"]>div{{background:#ffffff!important;
     border-color:var(--border)!important;border-radius:10px!important;color:var(--text)!important;}}
+[data-baseweb="select"] [data-baseweb="select-option"]{{background:#ffffff!important;color:var(--text)!important;}}
 
 /* ── TABS ── */
 .stTabs [data-baseweb="tab-list"]{{background:var(--bg2)!important;border-radius:10px!important;padding:4px!important;}}
