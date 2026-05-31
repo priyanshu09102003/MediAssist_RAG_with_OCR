@@ -264,16 +264,6 @@ def render_chat_messages():
                                 allergies=allergies_list,
                             )
 
-                            # Save to DB
-                            db.save_prescription(
-                                session_id=st.session_state.session_id,
-                                patient_id=st.session_state.patient_id,
-                                diagnosis=rx.get("diagnosis", ""),
-                                medications=meds,
-                                advice=rx.get("advice", ""),
-                                follow_up=rx.get("follow_up", ""),
-                            )
-
                             fname = (
                                 f"prescription_"
                                 f"{patient.get('name','patient').replace(' ','_')}_"
@@ -407,11 +397,20 @@ def process_input(
 
     st.session_state.last_response = response
 
-    # Auto-close session with diagnosis if prescription was generated
+    # Save prescription to DB exactly once + close session
     if response.prescription:
+        rx = response.prescription
+        db.save_prescription(
+            session_id=st.session_state.session_id,
+            patient_id=st.session_state.patient_id,
+            diagnosis=rx.get("diagnosis", ""),
+            medications=rx.get("medications", []),
+            advice=rx.get("advice", ""),
+            follow_up=rx.get("follow_up", ""),
+        )
         db.close_session(
             st.session_state.session_id,
-            diagnosis=response.prescription.get("diagnosis", ""),
+            diagnosis=rx.get("diagnosis", ""),
             severity=response.severity,
         )
 
