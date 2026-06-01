@@ -737,28 +737,28 @@ The image is encoded as base64 and embedded in the `HumanMessage` content as a m
 flowchart TD
     USER([User types: I have chest pain since 1 hour]) --> SAN[utils/sanitizer.py\nSanitize + validate text]
 
-    SAN --> TRIAGE[modules/triage.py\ntriage_fast — keyword scan\n→ SEVERE immediately]
+    SAN --> TRIAGE[modules/triage.py\ntriage_fast: keyword scan\nSEVERE immediately]
 
-    SAN --> LANG[modules/voice.py\ndetect_language → en]
+    SAN --> LANG[modules/voice.py\ndetect_language: en]
 
     SAN --> PCB[core/memory.py\nPatientContextBuilder.build\nFetch profile + vitals + history]
 
-    SAN --> VS[core/vector_store.py\nsearch_with_scores\nquery → top-5 medical chunks]
+    SAN --> VS[core/vector_store.py\nsearch_with_scores\nquery: top-5 medical chunks]
 
-    PCB --> PROMPT[core/llm_chain.py\nAssemble system prompt\nturn_count=3 → prescribing mode]
+    PCB --> PROMPT[core/llm_chain.py\nAssemble system prompt\nturn_count=3: prescribing mode]
     VS --> PROMPT
     TRIAGE --> PROMPT
 
     PROMPT --> RETRY[_call_llm_with_retry\nmax_retries=3\nexponential backoff]
-    RETRY --> GEM[✦ Gemini 1.5 Pro\nReasoning + prescription generation]
+    RETRY --> GEM[Gemini 1.5 Pro\nReasoning + prescription generation]
 
-    GEM --> PARSE[Response parser\n_extract_severity → severe\n_extract_differential → [Angina, MI, GERD]\n_extract_prescription → {medications}\n_clean_answer → display text]
+    GEM --> PARSE[Response parser\n_extract_severity: severe\n_extract_differential: Angina, MI, GERD\n_extract_prescription: medications\n_clean_answer: display text]
 
     PARSE --> MEM[core/memory.py\nSessionMemory.add_assistant_message\nPersist to SQLite]
 
     PARSE --> DRUG[modules/drug_checker.py\nCheck medications vs patient allergies]
 
-    PARSE --> AYUSH[modules/ayush.py\nKeyword match → cardiac remedies]
+    PARSE --> AYUSH[modules/ayush.py\nKeyword match: cardiac remedies]
 
     PARSE --> UI[ui/chat_ui.py\nRender: chat bubble + triage badge\n+ differential expander\n+ prescription + PDF button\n+ AYUSH expander]
 ```
