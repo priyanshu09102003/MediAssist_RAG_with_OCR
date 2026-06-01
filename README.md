@@ -1091,7 +1091,7 @@ mental   :   446 chunks  (5%)  — mental health content
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/mediassist-ai.git
+git clone https://github.com/priyanshu09102003/MediAssist_RAG_with_OCR
 cd mediassist-ai
 
 # 2. Create and activate virtual environment
@@ -1256,7 +1256,7 @@ mediassist-ai/
 curl -fsSL https://get.docker.com | sh
 
 # 2. Clone repo
-git clone https://github.com/yourusername/mediassist-ai.git
+git clone https://github.com/priyanshu09102003/MediAssist_RAG_with_OCR
 cd mediassist-ai
 
 # 3. Create .env
